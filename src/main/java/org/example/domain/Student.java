@@ -15,14 +15,12 @@ import java.util.List;
 @Entity
 @AllArgsConstructor(access = AccessLevel.PROTECTED)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Course {
-    @Id @GeneratedValue
+public class Student {
+    @Id
+    @GeneratedValue
     private Long id;
+    private String name;
 
-    private String title;
-
-
-    @OneToMany(mappedBy = "course", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "student", cascade = CascadeType.ALL)
     private List<Enrollment> enrollments = new ArrayList<>();
-
 }

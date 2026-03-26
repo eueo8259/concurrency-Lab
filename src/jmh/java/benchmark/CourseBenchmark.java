@@ -1,8 +1,5 @@
 package benchmark;
 
-import org.example.domain.Course;
-import org.example.domain.ReentrantLockCourse;
-import org.example.domain.SynchronizedCourse;
 import org.openjdk.jmh.annotations.*;
 
 import java.util.concurrent.TimeUnit;
