@@ -6,7 +6,6 @@ import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 
-import java.time.LocalDateTime;
 
 @Entity
 @AllArgsConstructor(access = AccessLevel.PROTECTED)
@@ -33,5 +32,14 @@ public class Enrollment {
     @JoinColumn(name = "course_id")
     private Course course;
 
+    @Enumerated(EnumType.STRING)
     private EnrollmentStatus status;
+
+    public static Enrollment create(Student student, Course course) {
+        Enrollment enrollment = new Enrollment();
+        enrollment.student = student;
+        enrollment.course = course;
+        enrollment.status = EnrollmentStatus.COMPLETED;
+        return enrollment;
+    }
 }
