@@ -1,0 +1,68 @@
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### IntelliJ IDEA ###
+.idea/modules.xml
+.idea/jarRepositories.xml
+.idea/compiler.xml
+.idea/libraries/
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+# Gradle 캐시 및 로컬 설정
+gradle.properties
+local.properties
+.incremental/
+
+# --- [추가] 테스트 및 로그 관련 (동시성 실험 시 중요) ---
+# 테스트 결과 리포트 및 로그 파일
+**/build/test-results/
+**/build/reports/
+*.log
+*.pcap
+/logs/
+
+# --- [추가] 라이브러리 및 도구 관련 ---
+# Lombok 관련 (컴파일 시 생성되는 파일)
+.generated/
+
+# JMH (Java Microbenchmark Harness) 실행 결과물
+jmh-visualizer/
+*.json
+*.csv
+
+# --- [추가] OS 관련 ---
+.DS_Store
+Thumbs.db
