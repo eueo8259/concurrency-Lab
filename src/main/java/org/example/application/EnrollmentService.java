@@ -16,7 +16,6 @@ import java.util.concurrent.locks.ReentrantLock;
 @Service
 @RequiredArgsConstructor
 public class EnrollmentService {
-    private final int MAX_CAPACITY = 100;
 
     private final EnrollmentRepository enrollmentRepository;
     private final CourseRepository courseRepository;
@@ -25,15 +24,18 @@ public class EnrollmentService {
     private final Lock reentrantLock = new ReentrantLock();
 
     @Transactional
-    public void enroll(Long studentId, Long courseId) {
+    public boolean enroll(Long studentId, Long courseId) {
         long count = enrollmentRepository.countByCourseId(courseId);
 
+        int MAX_CAPACITY = 100;
         if (count < MAX_CAPACITY) {
             Course course = courseRepository.getReferenceById(courseId);
             Student student = studentRepository.getReferenceById(studentId);
 
             Enrollment enrollment = Enrollment.create(student, course);
             enrollmentRepository.save(enrollment);
+            return true;
         }
+        return false;
     }
 }
