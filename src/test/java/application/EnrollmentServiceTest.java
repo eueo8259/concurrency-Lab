@@ -1,13 +1,15 @@
 package application;
 
 import org.example.EnrollmentBenchmarkApplication;
-import org.example.application.EnrollmentService;
+import org.example.application.EnrollmentFacade;
 import org.example.domain.Course;
 import org.example.domain.Student;
 import org.example.repository.CourseRepository;
 import org.example.repository.EnrollmentRepository;
 import org.example.repository.StudentRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,6 +19,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -24,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class EnrollmentServiceTest {
 
     @Autowired
-    private EnrollmentService enrollmentService;
+    private EnrollmentFacade enrollmentFacade;
 
     @Autowired
     private EnrollmentRepository enrollmentRepository;
@@ -36,36 +39,50 @@ class EnrollmentServiceTest {
     private StudentRepository studentRepository;
 
     private Long courseId;
+    private List<Long> studentIds; // 실제 생성된 학생 ID 리스트
+    private ExecutorService executorService;
+
+    private final int THREAD_COUNT = 120;
 
     @BeforeEach
     void setUp() {
-        // 1. 기존 데이터 초기화
         enrollmentRepository.deleteAllInBatch();
-        studentRepository.deleteAllInBatch(); // 학생 중복 생성 방지
+        studentRepository.deleteAllInBatch();
+        courseRepository.deleteAllInBatch();
 
         Course course = courseRepository.save(new Course("동시성 테스트 강의"));
         courseId = course.getId();
 
         List<Student> students = new ArrayList<>();
-        for (int i = 1; i <= 500; i++) {
+        for (int i = 1; i <= THREAD_COUNT; i++) {
             students.add(new Student("학생" + i));
         }
-        studentRepository.saveAll(students);
+        List<Student> savedStudents = studentRepository.saveAll(students);
+
+        studentIds = savedStudents.stream()
+                .map(Student::getId)
+                .collect(Collectors.toList());
+
+        executorService = Executors.newFixedThreadPool(64);
     }
+
+    @AfterEach
+    void tearDown() {
+        executorService.shutdown();
+    }
+
     @Test
+    @DisplayName("Facade + synchronized: 전체 테스트 실행 시에도 정합성 보장")
     void test1() throws InterruptedException {
         // given
-        int threadCount = 120;
-        ExecutorService executorService = Executors.newFixedThreadPool(32);
-        CountDownLatch latch = new CountDownLatch(threadCount);
+        CountDownLatch latch = new CountDownLatch(THREAD_COUNT);
 
         // when
-        for (long i = 1; i <= threadCount; i++) {
-            long studentId = i;
+        for (int i = 0; i < THREAD_COUNT; i++) {
+            Long studentId = studentIds.get(i);
             executorService.submit(() -> {
                 try {
-                    // synchronized 메서드 호출
-                    enrollmentService.enrollWithSync(studentId, courseId);
+                    enrollmentFacade.enrollWithSync(studentId, courseId);
                 } finally {
                     latch.countDown();
                 }
@@ -76,25 +93,22 @@ class EnrollmentServiceTest {
 
         // then
         long count = enrollmentRepository.countByCourseId(courseId);
-        
-        System.out.println("최종 등록 인원: " + count);
-        assertThat(count).isNotEqualTo(100);
+        System.out.println("synchronized 최종 등록 인원: " + count);
+        assertThat(count).isEqualTo(100);
     }
 
     @Test
+    @DisplayName("Facade + ReentrantLock: 전체 테스트 실행 시에도 정합성 보장")
     void test2() throws InterruptedException {
         // given
-        int threadCount = 120;
-        ExecutorService executorService = Executors.newFixedThreadPool(32);
-        CountDownLatch latch = new CountDownLatch(threadCount);
+        CountDownLatch latch = new CountDownLatch(THREAD_COUNT);
 
         // when
-        for (long i = 1; i <= threadCount; i++) {
-            long studentId = i;
+        for (int i = 0; i < THREAD_COUNT; i++) {
+            Long studentId = studentIds.get(i);
             executorService.submit(() -> {
                 try {
-                    // lock 메서드 호출
-                    enrollmentService.enrollWithLock(studentId, courseId);
+                    enrollmentFacade.enrollWithLock(studentId, courseId);
                 } finally {
                     latch.countDown();
                 }
@@ -105,8 +119,7 @@ class EnrollmentServiceTest {
 
         // then
         long count = enrollmentRepository.countByCourseId(courseId);
-
-        System.out.println("최종 등록 인원: " + count);
-        assertThat(count).isNotEqualTo(100);
+        System.out.println("ReentrantLock 최종 등록 인원: " + count);
+        assertThat(count).isEqualTo(100);
     }
 }
