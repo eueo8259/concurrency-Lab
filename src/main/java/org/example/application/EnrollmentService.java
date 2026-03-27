@@ -17,6 +17,8 @@ import java.util.concurrent.locks.ReentrantLock;
 @RequiredArgsConstructor
 public class EnrollmentService {
 
+    private final int MAX_CAPACITY = 100;
+
     private final EnrollmentRepository enrollmentRepository;
     private final CourseRepository courseRepository;
     private final StudentRepository studentRepository;
@@ -27,7 +29,6 @@ public class EnrollmentService {
     public boolean enroll(Long studentId, Long courseId) {
         long count = enrollmentRepository.countByCourseId(courseId);
 
-        int MAX_CAPACITY = 100;
         if (count < MAX_CAPACITY) {
             Course course = courseRepository.getReferenceById(courseId);
             Student student = studentRepository.getReferenceById(studentId);
@@ -37,5 +38,21 @@ public class EnrollmentService {
             return true;
         }
         return false;
+    }
+
+    @Transactional
+    public void enrollWithPessimisticLock(Long studentId, Long courseId) {
+        // 1. Course에 비관적 락을 걸어 조회 (다른 트랜잭션의 접근을 차단)
+        Course course = courseRepository.findByIdWithPessimisticLock(courseId)
+                .orElseThrow();
+
+        // 2. 락이 걸린 상태에서 카운트 조회 (가시성 보장)
+        long count = enrollmentRepository.countByCourseId(courseId);
+
+        if (count < 100) {
+            Student student = studentRepository.getReferenceById(studentId);
+            Enrollment enrollment = Enrollment.create(student, course);
+            enrollmentRepository.save(enrollment);
+        }
     }
 }

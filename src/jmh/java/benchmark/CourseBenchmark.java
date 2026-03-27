@@ -1,7 +1,8 @@
 package benchmark;
 
 import org.example.EnrollmentBenchmarkApplication;
-import org.example.application.EnrollmentFacade; // Service 대신 Facade 사용
+import org.example.application.EnrollmentFacade;
+import org.example.application.EnrollmentService;
 import org.example.domain.Course;
 import org.example.domain.Student;
 import org.example.repository.CourseRepository;
@@ -28,9 +29,14 @@ public class CourseBenchmark {
 
     private ConfigurableApplicationContext context;
     private EnrollmentFacade enrollmentFacade;
+    private EnrollmentService enrollmentService;
     private EnrollmentRepository enrollmentRepository;
 
-    private Long targetCourseId;
+    // 락 방식별로 독립된 강의 ID (격리)
+    private Long courseIdSync;
+    private Long courseIdLock;
+    private Long courseIdPessimistic;
+
     private List<Long> studentIds;
     private final AtomicInteger indexCounter = new AtomicInteger(0);
 
@@ -38,56 +44,58 @@ public class CourseBenchmark {
     public void init() {
         context = SpringApplication.run(EnrollmentBenchmarkApplication.class);
         enrollmentFacade = context.getBean(EnrollmentFacade.class);
+        enrollmentService = context.getBean(EnrollmentService.class);
         enrollmentRepository = context.getBean(EnrollmentRepository.class);
+
         CourseRepository courseRepository = context.getBean(CourseRepository.class);
         StudentRepository studentRepository = context.getBean(StudentRepository.class);
 
-        // 1. 깨끗한 환경을 위해 데이터 초기화
+        // 초기화
         enrollmentRepository.deleteAllInBatch();
         studentRepository.deleteAllInBatch();
         courseRepository.deleteAllInBatch();
 
-        // 2. 테스트용 강의 생성
-        Course course = courseRepository.save(new Course("JMH 성능 테스트 강의"));
-        targetCourseId = course.getId();
+        // 1. 각 방식이 사용할 독립된 강의 생성
+        courseIdSync = courseRepository.save(new Course("Synchronized 강의")).getId();
+        courseIdLock = courseRepository.save(new Course("ReentrantLock 강의")).getId();
+        courseIdPessimistic = courseRepository.save(new Course("PessimisticLock 강의")).getId();
 
-        // 3. 테스트용 학생 대량 생성 및 실제 ID 수집
+        // 2. 테스트용 학생 대량 생성 (ID 공유는 조회 연산이므로 오염 위험 낮음)
         List<Student> students = new ArrayList<>();
         for (int i = 1; i <= 100000; i++) {
             students.add(new Student("학생" + i));
         }
-
-        // saveAll 후 발급된 실제 ID 리스트 확보 (Auto-Increment 대응)
         List<Student> savedStudents = studentRepository.saveAll(students);
-        studentIds = savedStudents.stream()
-                .map(Student::getId)
-                .collect(Collectors.toList());
+        studentIds = savedStudents.stream().map(Student::getId).collect(Collectors.toList());
     }
 
     @Setup(Level.Iteration)
-    public void cleanEnrollments() {
-        // 수강 신청 내역만 삭제하여 정원(100명)에 도달하는 과정을 반복 측정
+    public void clean() {
+        // 매 반복마다 수강신청 내역을 비워 정원(100명)까지의 경합을 공정하게 반복 측정
         enrollmentRepository.deleteAllInBatch();
-        // ID 리스트를 처음부터 다시 순회하도록 리셋
         indexCounter.set(0);
     }
 
     @TearDown(Level.Trial)
     public void tearDown() {
-        if (context != null) {
-            context.close();
-        }
-    }
-
-    @Benchmark
-    public void measureSynchronized() {
-        int idx = indexCounter.getAndIncrement() % studentIds.size();
-        enrollmentFacade.enrollWithSync(studentIds.get(idx), targetCourseId);
+        if (context != null) context.close();
     }
 
     @Benchmark
     public void measureReentrantLock() {
         int idx = indexCounter.getAndIncrement() % studentIds.size();
-        enrollmentFacade.enrollWithLock(studentIds.get(idx), targetCourseId);
+        enrollmentFacade.enrollWithLock(studentIds.get(idx), courseIdLock);
+    }
+
+    @Benchmark
+    public void measureSynchronized() {
+        int idx = indexCounter.getAndIncrement() % studentIds.size();
+        enrollmentFacade.enrollWithSync(studentIds.get(idx), courseIdSync);
+    }
+
+    @Benchmark
+    public void measurePessimisticLock() {
+        int idx = indexCounter.getAndIncrement() % studentIds.size();
+        enrollmentService.enrollWithPessimisticLock(studentIds.get(idx), courseIdPessimistic);
     }
 }

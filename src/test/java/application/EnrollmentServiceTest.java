@@ -2,6 +2,7 @@ package application;
 
 import org.example.EnrollmentBenchmarkApplication;
 import org.example.application.EnrollmentFacade;
+import org.example.application.EnrollmentService; // Service 주입 추가
 import org.example.domain.Course;
 import org.example.domain.Student;
 import org.example.repository.CourseRepository;
@@ -30,6 +31,9 @@ class EnrollmentServiceTest {
     private EnrollmentFacade enrollmentFacade;
 
     @Autowired
+    private EnrollmentService enrollmentService; // 비관적 락 호출을 위해 추가
+
+    @Autowired
     private EnrollmentRepository enrollmentRepository;
 
     @Autowired
@@ -39,7 +43,7 @@ class EnrollmentServiceTest {
     private StudentRepository studentRepository;
 
     private Long courseId;
-    private List<Long> studentIds; // 실제 생성된 학생 ID 리스트
+    private List<Long> studentIds;
     private ExecutorService executorService;
 
     private final int THREAD_COUNT = 120;
@@ -72,12 +76,10 @@ class EnrollmentServiceTest {
     }
 
     @Test
-    @DisplayName("Facade + synchronized: 전체 테스트 실행 시에도 정합성 보장")
+    @DisplayName("Facade + synchronized: 정합성 보장")
     void test1() throws InterruptedException {
-        // given
         CountDownLatch latch = new CountDownLatch(THREAD_COUNT);
 
-        // when
         for (int i = 0; i < THREAD_COUNT; i++) {
             Long studentId = studentIds.get(i);
             executorService.submit(() -> {
@@ -90,20 +92,14 @@ class EnrollmentServiceTest {
         }
 
         latch.await();
-
-        // then
-        long count = enrollmentRepository.countByCourseId(courseId);
-        System.out.println("synchronized 최종 등록 인원: " + count);
-        assertThat(count).isEqualTo(100);
+        assertThat(enrollmentRepository.countByCourseId(courseId)).isEqualTo(100);
     }
 
     @Test
-    @DisplayName("Facade + ReentrantLock: 전체 테스트 실행 시에도 정합성 보장")
+    @DisplayName("Facade + ReentrantLock: 정합성 보장")
     void test2() throws InterruptedException {
-        // given
         CountDownLatch latch = new CountDownLatch(THREAD_COUNT);
 
-        // when
         for (int i = 0; i < THREAD_COUNT; i++) {
             Long studentId = studentIds.get(i);
             executorService.submit(() -> {
@@ -116,10 +112,33 @@ class EnrollmentServiceTest {
         }
 
         latch.await();
+        assertThat(enrollmentRepository.countByCourseId(courseId)).isEqualTo(100);
+    }
+
+    @Test
+    @DisplayName("DB Pessimistic Lock: 쿼리 수준에서 정합성 보장")
+    void test3() throws InterruptedException {
+        // given
+        CountDownLatch latch = new CountDownLatch(THREAD_COUNT);
+
+        // when
+        for (int i = 0; i < THREAD_COUNT; i++) {
+            Long studentId = studentIds.get(i);
+            executorService.submit(() -> {
+                try {
+                    // 비관적 락은 Facade 없이 Service 메서드를 직접 호출
+                    enrollmentService.enrollWithPessimisticLock(studentId, courseId);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+
+        latch.await();
 
         // then
         long count = enrollmentRepository.countByCourseId(courseId);
-        System.out.println("ReentrantLock 최종 등록 인원: " + count);
+        System.out.println("Pessimistic Lock 최종 등록 인원: " + count);
         assertThat(count).isEqualTo(100);
     }
 }
